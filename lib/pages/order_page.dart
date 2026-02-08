@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/print_service.dart';
 import '../widgets/number_field.dart';
 import '../widgets/price_field.dart';
 
@@ -21,12 +22,17 @@ class _OrderPageState extends State<OrderPage> {
   bool _uploading = false;
   int _uploadedCount = 0;
   String? _uploadError;
+  bool _printing = false;
+  String? _printError;
+  List<String> _uploadedPaths = [];
 
   Future<void> _pickAndUploadFiles(String token) async {
     setState(() {
       _uploading = true;
       _uploadedCount = 0;
       _uploadError = null;
+      _printError = null;
+      _uploadedPaths = [];
     });
 
     try {
@@ -47,12 +53,41 @@ class _OrderPageState extends State<OrderPage> {
         }
         final path = '$token/${file.name}';
         await storage.uploadBinary(path, bytes);
-        setState(() => _uploadedCount += 1);
+        setState(() {
+          _uploadedCount += 1;
+          _uploadedPaths.add(path);
+        });
       }
     } catch (error) {
       setState(() => _uploadError = 'Upload failed.');
     } finally {
       setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _printUploadedFiles() async {
+    if (_uploadedPaths.isEmpty) {
+      setState(() => _printError = 'No uploaded files to print.');
+      return;
+    }
+
+    setState(() {
+      _printing = true;
+      _printError = null;
+    });
+
+    try {
+      final storage = Supabase.instance.client.storage.from('orders');
+      final urls = <String>[];
+      for (final path in _uploadedPaths) {
+        final url = await storage.createSignedUrl(path, 300);
+        urls.add(url);
+      }
+      await printUrls(urls);
+    } catch (error) {
+      setState(() => _printError = 'Printing failed.');
+    } finally {
+      setState(() => _printing = false);
     }
   }
 
@@ -97,6 +132,13 @@ class _OrderPageState extends State<OrderPage> {
                   const SizedBox(height: 8),
                   Text(
                     _uploadError!,
+                    style: const TextStyle(color: Colors.redAccent),
+                  ),
+                ],
+                if (_printError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _printError!,
                     style: const TextStyle(color: Colors.redAccent),
                   ),
                 ],
@@ -178,9 +220,11 @@ class _OrderPageState extends State<OrderPage> {
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  onPressed: () {},
+                  onPressed: _printing || _uploading
+                      ? null
+                      : _printUploadedFiles,
                   icon: const Icon(Icons.print),
-                  label: const Text('Send to printer'),
+                  label: Text(_printing ? 'Printing...' : 'Print files'),
                 ),
               ],
             ),
