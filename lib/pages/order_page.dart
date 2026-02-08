@@ -1,8 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../services/print_service.dart';
 import '../widgets/number_field.dart';
 import '../widgets/price_field.dart';
 
@@ -22,8 +20,9 @@ class _OrderPageState extends State<OrderPage> {
   bool _uploading = false;
   int _uploadedCount = 0;
   String? _uploadError;
-  bool _printing = false;
-  String? _printError;
+  bool _submitting = false;
+  String? _submitError;
+  String? _submitSuccess;
   List<String> _uploadedPaths = [];
 
   Future<void> _pickAndUploadFiles(String token) async {
@@ -31,7 +30,8 @@ class _OrderPageState extends State<OrderPage> {
       _uploading = true;
       _uploadedCount = 0;
       _uploadError = null;
-      _printError = null;
+      _submitError = null;
+      _submitSuccess = null;
       _uploadedPaths = [];
     });
 
@@ -65,29 +65,33 @@ class _OrderPageState extends State<OrderPage> {
     }
   }
 
-  Future<void> _printUploadedFiles() async {
+  Future<void> _submitOrder(String token, double total) async {
     if (_uploadedPaths.isEmpty) {
-      setState(() => _printError = 'No uploaded files to print.');
+      setState(() => _submitError = 'Upload files first.');
       return;
     }
 
     setState(() {
-      _printing = true;
-      _printError = null;
+      _submitting = true;
+      _submitError = null;
+      _submitSuccess = null;
     });
 
     try {
-      final storage = Supabase.instance.client.storage.from('orders');
-      final urls = <String>[];
-      for (final path in _uploadedPaths) {
-        final url = await storage.createSignedUrl(path, 300);
-        urls.add(url);
-      }
-      await printUrls(urls);
+      await Supabase.instance.client.from('orders').insert({
+        'token': token,
+        'file_paths': _uploadedPaths,
+        'is_color': _isColor,
+        'copies': _copies,
+        'pages': _pages,
+        'total': total,
+        'status': 'new',
+      });
+      setState(() => _submitSuccess = 'Order sent to desktop printer.');
     } catch (error) {
-      setState(() => _printError = 'Printing failed.');
+      setState(() => _submitError = 'Failed to send order.');
     } finally {
-      setState(() => _printing = false);
+      setState(() => _submitting = false);
     }
   }
 
@@ -135,11 +139,18 @@ class _OrderPageState extends State<OrderPage> {
                     style: const TextStyle(color: Colors.redAccent),
                   ),
                 ],
-                if (_printError != null) ...[
+                if (_submitError != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    _printError!,
+                    _submitError!,
                     style: const TextStyle(color: Colors.redAccent),
+                  ),
+                ],
+                if (_submitSuccess != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _submitSuccess!,
+                    style: const TextStyle(color: Colors.green),
                   ),
                 ],
                 const SizedBox(height: 24),
@@ -220,11 +231,13 @@ class _OrderPageState extends State<OrderPage> {
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  onPressed: _printing || _uploading
+                  onPressed: _uploading || _submitting
                       ? null
-                      : _printUploadedFiles,
+                      : () => _submitOrder(token, total),
                   icon: const Icon(Icons.print),
-                  label: Text(_printing ? 'Printing...' : 'Print files'),
+                  label: Text(
+                    _submitting ? 'Sending...' : 'Send to desktop printer',
+                  ),
                 ),
               ],
             ),

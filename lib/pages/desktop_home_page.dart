@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../config.dart';
 import '../services/local_host.dart';
+import '../services/order_processor.dart';
 
 class DesktopHomePage extends StatefulWidget {
   const DesktopHomePage({super.key});
@@ -17,15 +18,20 @@ class DesktopHomePage extends StatefulWidget {
 class _DesktopHomePageState extends State<DesktopHomePage> {
   final _random = Random();
   Timer? _timer;
+  OrderProcessor? _orderProcessor;
   String _token = '';
   DateTime _nextRefresh = DateTime.now();
   String _host = 'localhost';
+  String _orderStatus = 'Waiting for orders...';
 
   @override
   void initState() {
     super.initState();
     _loadHost();
     _refreshToken();
+    _orderProcessor = OrderProcessor(
+      onStatus: (status) => setState(() => _orderStatus = status),
+    )..start();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (DateTime.now().isAfter(_nextRefresh)) {
         _refreshToken();
@@ -38,6 +44,7 @@ class _DesktopHomePageState extends State<DesktopHomePage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _orderProcessor?.stop();
     super.dispose();
   }
 
@@ -106,6 +113,11 @@ class _DesktopHomePageState extends State<DesktopHomePage> {
                   style: const TextStyle(color: Colors.black54),
                 ),
                 const SizedBox(height: 16),
+                Text(
+                  _orderStatus,
+                  style: const TextStyle(color: Colors.black54),
+                ),
+                const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _refreshToken,
                   icon: const Icon(Icons.refresh),
